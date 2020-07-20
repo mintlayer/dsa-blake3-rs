@@ -25,20 +25,19 @@ fn print_type_of<T>(_: &T) {
     println!("TYPE: {}", std::any::type_name::<T>())
 }
 
-fn dsa(stakes: Vec<Stake>, slots: Vec<Slot>) -> Vec<Slot> {
-    let mut stakes_copy = stakes.clone();
+fn dsa(mut stakes: Vec<Stake>, slots: Vec<Slot>) -> Vec<Slot> {
     let mut ret = slots.clone();
 
     for (i, _slot) in slots.iter().enumerate() {
         let hash = hex::decode(BTC).expect("Decoding failed");
         let mut rnd = rand(i as u8, hash, total(&stakes));
 
-        for (el_id, stake) in stakes.iter().enumerate() {
+        for (_, stake) in stakes.iter_mut().enumerate() {
             if stake.weight >= rnd {
                 if stake.weight >= MIN_STAKE {
-                    stakes_copy[el_id].weight -= MIN_STAKE;
+                    stake.weight -= MIN_STAKE;
                 } else {
-                    stakes_copy.remove(el_id);
+                    stake.weight = 0;
                 }
                 ret[i].key = stake.id;
                 break;
@@ -135,14 +134,14 @@ mod tests {
         let result = dsa(stakes, slots);
         assert_eq!(9840002, tot);
         assert_eq!(8, result[0].key);
-        assert_eq!(6, result[1].key);
+        assert_eq!(5, result[1].key);
         assert_eq!(8, result[2].key);
         assert_eq!(3, result[3].key);
         assert_eq!(8, result[4].key);
-        assert_eq!(8, result[5].key);
+        assert_eq!(7, result[5].key);
         assert_eq!(5, result[6].key);
-        assert_eq!(6, result[7].key);
+        assert_eq!(5, result[7].key);
         assert_eq!(8, result[8].key);
-        assert_eq!(5, result[9].key);
+        assert_eq!(4, result[9].key);
     }
 }
