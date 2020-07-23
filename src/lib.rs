@@ -18,7 +18,6 @@ fn total(stakes: &Vec<Stake>) -> u32 {
 }
 
 const MIN_STAKE: u32 = 440000;
-const MAX_VAL: u32 = 4294967295;
 const BTC: &'static str = "0000000000000000000d9ed0f796aeee51b200c7293a6e31c101a0e4159bf310";
 
 fn print_type_of<T>(_: &T) {
@@ -49,7 +48,7 @@ fn dsa(mut stakes: Vec<Stake>, slots: Vec<Slot>) -> Vec<Slot> {
     ret
 }
 
-fn rand(i: u8, hash: Vec<u8>, max: u32) -> u32 {
+fn rand(i: u8, hash: Vec<u8>, top: u32) -> u32 {
     let wrap_i: [u8; 1] = [i];
     let mut hasher = blake3::Hasher::new();
     hasher.update(b"Mintlayer");
@@ -60,7 +59,7 @@ fn rand(i: u8, hash: Vec<u8>, max: u32) -> u32 {
     output_reader.fill(&mut out);
     let ret: u32 = u32::from_be_bytes(out);
     // we don't care about float for this POC
-    ((max as f64) / (MAX_VAL as f64) * ret as f64) as u32
+    ((top as f64) / (u32::MAX as f64) * ret as f64) as u32
 }
 
 #[cfg(test)]
