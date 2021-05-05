@@ -1,16 +1,29 @@
 extern crate hex;
 
+use std::collections::BTreeMap;
+type Participant = u32;
+
 #[derive(Debug, Clone)]
 struct Stake {
-    id: u32,
+    id: Participant,
     weight: u32,
 }
 
 #[derive(Debug, Clone)]
 struct Slot {
     id: u32,
-    key: u32,
+    key: Participant,
 }
+
+const MAX_PARTICIPANTS: usize = 1008;
+const MAX_COMMITTEE: usize = 80;
+
+#[derive(Debug, Clone)]
+struct FinalSlot {
+    slot:Slot,
+    committee: [Participant;MAX_COMMITTEE]
+}
+
 
 fn total(stakes: &Vec<Stake>) -> u32 {
     // we don't care about overflow for the test
@@ -45,6 +58,97 @@ fn dsa(mut stakes: Vec<Stake>, slots: Vec<Slot>) -> Vec<Slot> {
             }
         }
     }
+    ret
+}
+
+fn dsa_two(mut stakes: Vec<Stake>, slots: Vec<Slot>) -> Vec<FinalSlot> {
+    use std::convert::TryInto;
+
+    let mut ret:Vec<FinalSlot> =vec![];
+
+    // avoiding participant to be a blocksigner on adjacent slots,
+    // giving chance to the other participants who are not yet chosen.
+    let mut is_in_committee: BTreeMap<Participant,()> = BTreeMap::new();
+
+    for (i, slot) in slots.iter().enumerate() {
+
+        // clear up the list, when most participants had been a blocksigner.
+        if is_in_committee.len() > stakes.len()-MAX_COMMITTEE {
+            println!("\nemptying the is_in_committee checker...");
+            is_in_committee = BTreeMap::new();
+        }
+
+        let hash = hex::decode(BTC).expect("Decoding failed");
+        let mut rnd = rand(i as u8, hash, total(&stakes));
+
+        // help in choosing the committee; based on the rnd variable.
+        let mut committee_diff:i32 = 0;
+
+        // choosing a committee based on this list.
+        // BTreeMap used, ensuring that the participant of the least calculated committee_diff
+        // will be chosen.
+        let mut pot_committee:BTreeMap<i32,Participant> = BTreeMap::new();
+
+        let mut leader:Option<Participant> = None;
+
+        for (_, stake) in stakes.iter_mut().enumerate() {
+
+            if leader.is_none() && stake.weight >= rnd {
+                if stake.weight >= MIN_STAKE {
+                    stake.weight -= MIN_STAKE;
+                } else {
+                    stake.weight = 0;
+                }
+                leader = Some(stake.id.clone());
+
+                println!("\nslot:{} leader:{}", slot.id, stake.id);
+            } else {
+
+                // continued computation to get the committee.
+                if let Some(updated_rnd) =  rnd.checked_sub(stake.weight) {
+                    rnd = updated_rnd;
+                    committee_diff = rnd as i32;
+                } else {
+                    committee_diff = rnd as i32 - stake.weight as i32;
+                }
+
+                // add participant to the potential committee ONLY if it hasn't been a blocksigner
+                // on the previous slots.
+                if ! is_in_committee.contains_key(&stake.id) {
+                    pot_committee.insert(committee_diff, stake.id);
+                }
+            }
+        }
+
+        let mut committee:Vec<Participant> = vec![];
+
+        // iterate over potential committee
+        let mut pot_iter = pot_committee.into_iter();
+
+        // keep iterating until the maximum number of participants in the committee
+        // has been fulfilled.
+        while committee.len() < MAX_COMMITTEE {
+            if let Some((_,participant)) = pot_iter.next() {
+                committee.push(participant);
+                is_in_committee.insert(participant,());
+            } else {
+                println!("  warning: no more participants.");
+                break;
+            }
+        }
+
+        println!("  committee: {:?}", committee);
+
+        // update the slot with the leader and the committee
+        let mut updated_slot = slot.clone();
+        updated_slot.key = leader.unwrap();
+
+        ret.push(FinalSlot {
+            slot: updated_slot,
+            committee: committee.try_into().expect("slice with incorrect length")
+        });
+    }
+
     ret
 }
 
@@ -142,5 +246,30 @@ mod tests {
         assert_eq!(5, result[7].key);
         assert_eq!(8, result[8].key);
         assert_eq!(4, result[9].key);
+    }
+
+
+    #[test]
+    fn test_committee() {
+        let mut slots:Vec<Slot> = vec![];
+        let mut stakes:Vec<Stake> = vec![];
+
+        for i in 0 .. MAX_PARTICIPANTS {
+            slots.push(Slot {
+                id: i as u32,
+                key: 0
+            });
+
+            stakes.push( Stake {
+                id: i as u32,
+                weight: MIN_STAKE + i as u32 *2
+            })
+        }
+
+        let tot = total(&stakes);
+        let result = dsa_two(stakes, slots);
+        assert!(true);
+
+        //TODO: add more asserts
     }
 }
