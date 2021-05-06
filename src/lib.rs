@@ -1,5 +1,5 @@
 extern crate hex;
-use log::{error, info, debug};
+
 
 use std::collections::BTreeMap;
 use std::convert::TryInto;
@@ -63,35 +63,35 @@ fn random_committee(mut stakes: Vec<Stake>, slot_id:u8) -> Vec<Participant> {
     let mut committee:Vec<Participant> = vec![];
 
     while committee.len() < MAX_COMMITTEE {
-       debug!(" -> need {} more in the committee; participants left: {}", MAX_COMMITTEE - committee.len(), stakes.len());
+        // println!(" -> need {} more in the committee; participants left: {}", MAX_COMMITTEE - committee.len(), stakes.len());
 
-       stakes.retain(|stake| {
-           if committee.len() == MAX_COMMITTEE {
-               // if committee has been filled, don't bother checking for the others.
-               false
-           } else {
-               if stake.weight >= rnd {
+        stakes.retain(|stake| {
+            if committee.len() == MAX_COMMITTEE {
+                // if committee has been filled, don't bother checking for the others.
+                false
+            } else {
+                if stake.weight >= rnd {
 
-                   committee.push(stake.id);
+                    committee.push(stake.id);
 
-                   //deduct the chosen participant's stakes to the total.
-                   total_stakes -= stake.weight;
+                    //deduct the chosen participant's stakes to the total.
+                    total_stakes -= stake.weight;
 
-                   //recalculate the random number
-                   rnd = rand(slot_id,hash.clone(),total_stakes);
+                    //recalculate the random number
+                    rnd = rand(slot_id,hash.clone(),total_stakes);
 
-                   false
-               } else {
-                   rnd -= stake.weight;
-                    debug!(" -> stake {} loops to next round",stake.id);
-                   true
-               }
-           }
-       });
+                    false
+                } else {
+                    rnd -= stake.weight;
+                    // println!(" -> stake {} loops to next round",stake.id);
+                    true
+                }
+            }
+        });
 
     }
 
-    debug!("  -> committee: {:?}", committee);
+    // println!("  -> committee: {:?}", committee);
 
     committee
 }
@@ -135,7 +135,7 @@ fn dsa2( slots:&mut Vec<Slot2>, mut stakes: Vec<Stake>) {
     for (i, slot) in slots.into_iter().enumerate() {
         let hash = hex::decode(BTC).expect("Decoding failed");
         let mut rnd = rand(i as u8, hash, total(&stakes));
-        info!("\nSLOT {}",i);
+        // println!("\nSLOT {}",i);
 
         for (j, stake) in stakes.iter_mut().enumerate() {
 
@@ -145,7 +145,7 @@ fn dsa2( slots:&mut Vec<Slot2>, mut stakes: Vec<Stake>) {
                 } else {
                     stake.weight = 0;
                 }
-                info!(" -> stake {} is leader!",stake.id);
+                // println!(" -> stake {} is leader!",stake.id);
                 slot.id = i as u32;
                 slot.key = stake.id;
 
