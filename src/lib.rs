@@ -106,6 +106,7 @@ fn dsa(slots: &mut Vec<Slot>, mut stakes: Vec<Stake>, max_committee: usize) {
                     stake.weight = 0;
                 }
 
+                debug!("slot:{} leader:{}", slot.id, stake.id);
                 slot.id = i as u32;
                 slot.key = stake.id;
 
@@ -228,7 +229,10 @@ mod tests {
 
         for i in 0..max_participants {
             if i < max_committee {
-                slots.push(Default::default());
+                let mut slot: Slot = Default::default();
+                slot.id = i;
+
+                slots.push(slot);
             }
 
             stakes.push(Stake {
@@ -237,21 +241,39 @@ mod tests {
             })
         }
 
-        dsa(&mut slots, stakes, max_committee);
+        dsa(&mut slots, stakes, max_committee as usize);
 
-        assert!(true);
+        {
+            let slot_0_committee: Vec<u32> = vec![
+                827, 647, 467, 287, 107, 936, 755, 575, 395, 215, 35, 864, 683, 503, 323, 143, 972,
+                791, 611, 431, 251, 71, 900, 719, 539, 359, 179, 1007, 826, 646, 466, 286, 106, 935,
+                754, 574, 394, 214, 34, 863, 682, 502, 322, 142, 971, 790, 610, 430, 250, 70, 899, 718,
+                538, 358, 178, 1006, 825, 645, 465, 285, 105, 934, 753, 573, 393, 213, 33, 862, 681,
+                501, 321, 141, 970, 789, 609, 429, 249, 69, 898, 717,
+            ];
 
-        let slot_0_committee: Vec<u32> = vec![
-            827, 647, 467, 287, 107, 936, 755, 575, 395, 215, 35, 864, 683, 503, 323, 143, 972,
-            791, 611, 431, 251, 71, 900, 719, 539, 359, 179, 1007, 826, 646, 466, 286, 106, 935,
-            754, 574, 394, 214, 34, 863, 682, 502, 322, 142, 971, 790, 610, 430, 250, 70, 899, 718,
-            538, 358, 178, 1006, 825, 645, 465, 285, 105, 934, 753, 573, 393, 213, 33, 862, 681,
-            501, 321, 141, 970, 789, 609, 429, 249, 69, 898, 717,
-        ];
+            let slot_0 = slots[0].clone();
 
-        let slot_0 = slots[0].clone();
+            assert_eq!(828, slot_0.key);
+            assert_eq!(slot_0_committee, slot_0.committee);
 
-        assert_eq!(828, slot_0.key);
-        assert_eq!(slot_0_committee, slot_0.committee)
+        }
+        {
+            let slot_74_committee: Vec<u32> = vec![
+                50, 101, 151, 203, 251, 298, 347, 394, 445, 496, 546, 594, 646, 695, 747, 796, 848,
+                895, 945, 990, 30, 84, 134, 184, 233, 280, 329, 376, 426, 475, 529, 577, 627, 677,
+                725, 779, 830, 879, 929, 974, 13, 63, 117, 167, 216, 264, 311, 360, 407, 459, 510,
+                560, 607, 660, 708, 760, 811, 861, 912, 958, 1005, 45, 97, 147, 199, 247, 293, 342,
+                390, 440, 489, 542, 590, 641, 691, 742, 792, 844, 891, 941
+            ];
+
+            let slot_74 = slots[74].clone();
+
+            assert_eq!(49, slot_74.key);
+            assert_eq!(slot_74_committee, slot_74.committee);
+
+        }
+
+
     }
 }
