@@ -1,127 +1,37 @@
+
+mod slot;
+mod participant;
+mod round;
+
 extern crate hex;
 
 use log::{debug, info};
 
+pub use participant::{ Participant, Id as ParticipantId };
+pub use slot::{Slot, Id as SlotId };
+pub use round::*;
+
 const MIN_STAKE: u32 = 440000;
 const BTC: &'static str = "0000000000000000000d9ed0f796aeee51b200c7293a6e31c101a0e4159bf310";
 
-type Participant = u32;
-type Committee = Vec<Participant>;
 
 #[derive(Debug, Clone)]
-struct Stake {
-    id: Participant,
-    weight: u32,
+pub struct Stake{
+    pub id:u32,
+    pub weight:u32
 }
 
-#[derive(Debug, Clone)]
-struct Slot {
-    id: u32,
-    key: Participant,
-    committee: Committee,
-}
-
-impl Default for Slot {
-    fn default() -> Self {
-        Self {
-            id: 0,
-            key: 0,
-            committee: vec![],
-        }
-    }
-}
-
-impl Slot {
-    fn set_committee(&mut self, mut stakes: Vec<Stake>, max_committee: usize) {
-        // we lack the number of stakes, or the max_committee set is too big
-        if max_committee >= stakes.len() {
-            info!("stakes not enough to fill the committee.");
-            self.committee = stakes.iter().map(|stake| stake.id).collect();
-        } else {
-            let hash = hex::decode(BTC).expect("Decoding failed");
-
-            let mut total_stakes = total(&stakes);
-            let mut rnd = rand(self.id as u8, hash.clone(), total_stakes);
-
-            let mut committee: Vec<Participant> = vec![];
-
-            while committee.len() < max_committee {
-                debug!(
-                    " -> need {} more in the committee; participants left: {}",
-                    max_committee - committee.len(),
-                    stakes.len()
-                );
-
-                stakes.retain(|stake| {
-                    if committee.len() == max_committee {
-                        // if committee has been filled, don't bother checking for the others.
-                        false
-                    } else {
-                        if stake.weight >= rnd {
-                            committee.push(stake.id);
-
-                            //deduct the chosen participant's stakes from the total.
-                            total_stakes -= stake.weight;
-
-                            //recalculate the random number
-                            rnd = rand(self.id as u8, hash.clone(), total_stakes);
-
-                            false
-                        } else {
-                            debug!(" -> stake {} loops to next round", stake.id);
-
-                            rnd -= stake.weight;
-
-                            true
-                        }
-                    }
-                });
-            }
-
-            debug!("  -> committee: {:?}", committee);
-            self.committee = committee;
-        }
-    }
-}
-
-fn total(stakes: &Vec<Stake>) -> u32 {
+pub fn total_stakes(stakes:&Vec<Stake>) -> u32 {
     // we don't care about overflow for the test
-    stakes.iter().map(|slot| slot.weight).sum()
+    stakes.iter().map(|s| s.weight).sum()
+}
+
+pub(crate) fn total_stakes2(pcpants:&Vec<Participant>) -> u32 {
+    pcpants.iter().map(|p| p.weight).sum()
 }
 
 fn print_type_of<T>(_: &T) {
     println!("TYPE: {}", std::any::type_name::<T>())
-}
-
-fn dsa(slots: &mut Vec<Slot>, mut stakes: Vec<Stake>, max_committee: usize) {
-    for (i, slot) in slots.into_iter().enumerate() {
-        let hash = hex::decode(BTC).expect("Decoding failed");
-        let mut rnd = rand(i as u8, hash, total(&stakes));
-
-        for (j, stake) in stakes.iter_mut().enumerate() {
-            if stake.weight >= rnd {
-                if stake.weight >= MIN_STAKE {
-                    stake.weight -= MIN_STAKE;
-                } else {
-                    stake.weight = 0;
-                }
-
-                debug!("slot:{} leader:{}", slot.id, stake.id);
-                slot.id = i as u32;
-                slot.key = stake.id;
-
-                // generate a committee with the same algo, but now without the leader's stakes.
-                let mut stake_without_j = stakes.clone();
-                stake_without_j.remove(j);
-
-                slot.set_committee(stake_without_j, max_committee);
-
-                break;
-            } else {
-                rnd -= stake.weight;
-            }
-        }
-    }
 }
 
 fn rand(i: u8, hash: Vec<u8>, top: u32) -> u32 {
@@ -153,127 +63,120 @@ mod tests {
 
     #[test]
     fn test_stakes() {
-        let max_committee = 80;
-        let max_participants = 1008;
+        let committee_size = 4;
+        let slot_size = 10;
 
         let stakes = vec![
-            Stake {
+           Stake {
                 id: 0,
                 weight: MIN_STAKE,
             },
-            Stake {
+           Stake {
                 id: 1,
                 weight: MIN_STAKE,
             },
-            Stake {
+           Stake {
                 id: 2,
                 weight: MIN_STAKE + 1,
             },
-            Stake {
+           Stake {
                 id: 3,
                 weight: MIN_STAKE * 2,
             },
-            Stake {
+           Stake {
                 id: 4,
                 weight: MIN_STAKE * 2,
             },
-            Stake {
+           Stake {
                 id: 5,
                 weight: MIN_STAKE * 4,
             },
-            Stake {
+           Stake {
                 id: 6,
                 weight: 1_000_000,
             },
-            Stake {
+           Stake {
                 id: 7,
                 weight: 1_000_001,
             },
-            Stake {
+           Stake {
                 id: 8,
                 weight: 3_000_000,
             },
         ];
 
-        let mut slots: Vec<Slot> = vec![];
+        let hash = hex::decode(BTC).expect("Decoding failed");
 
-        for i in 0..max_participants {
-            let mut slot: Slot = Default::default();
-            slot.id = i;
+        let round = Round::new(&stakes,slot_size,committee_size,hash);
+        let slots = round.get_slots();
 
-            slots.push(slot);
-        }
-
-        let tot = total(&stakes);
-        dsa(&mut slots, stakes, max_committee);
-        assert_eq!(9840002, tot);
-        assert_eq!(8, slots[0].key);
-        assert_eq!(5, slots[1].key);
-        assert_eq!(8, slots[2].key);
-        assert_eq!(3, slots[3].key);
-        assert_eq!(8, slots[4].key);
-        assert_eq!(7, slots[5].key);
-        assert_eq!(5, slots[6].key);
-        assert_eq!(5, slots[7].key);
-        assert_eq!(8, slots[8].key);
-        assert_eq!(4, slots[9].key);
+        assert_eq!(9840002,total_stakes(&stakes));
+        assert_eq!(2,round.signature_threshold());
+        assert_eq!(8, slots[0].leader);
+        assert_eq!(5, slots[1].leader);
+        assert_eq!(8, slots[2].leader);
+        assert_eq!(3, slots[3].leader);
+        assert_eq!(8, slots[4].leader);
+        assert_eq!(7, slots[5].leader);
+        assert_eq!(5, slots[6].leader);
+        assert_eq!(5, slots[7].leader);
+        assert_eq!(8, slots[8].leader);
+        assert_eq!(4, slots[9].leader);
     }
 
     #[test]
     fn test_committee() {
-        let max_committee = 80;
-        let max_participants = 1008;
+        let committee_size = 80;
+        let slot_size = 1008;
 
-        let mut slots: Vec<Slot> = vec![];
         let mut stakes: Vec<Stake> = vec![];
 
-        for i in 0..max_participants {
-            if i < max_committee {
-                let mut slot: Slot = Default::default();
-                slot.id = i;
-
-                slots.push(slot);
-            }
-
+        for i in 0..slot_size {
             stakes.push(Stake {
                 id: i as u32,
                 weight: MIN_STAKE + i as u32 * 2,
             })
         }
 
-        dsa(&mut slots, stakes, max_committee as usize);
+        let hash = hex::decode(BTC).expect("Decoding failed");
 
+        let round = Round::new(&stakes,slot_size,committee_size,hash);
+        assert_eq!(40,round.signature_threshold());
+
+        let slots = round.get_slots();
         {
             let slot_0_committee: Vec<u32> = vec![
-                827, 647, 467, 287, 107, 936, 755, 575, 395, 215, 35, 864, 683, 503, 323, 143, 972,
-                791, 611, 431, 251, 71, 900, 719, 539, 359, 179, 1007, 826, 646, 466, 286, 106, 935,
-                754, 574, 394, 214, 34, 863, 682, 502, 322, 142, 971, 790, 610, 430, 250, 70, 899, 718,
-                538, 358, 178, 1006, 825, 645, 465, 285, 105, 934, 753, 573, 393, 213, 33, 862, 681,
-                501, 321, 141, 970, 789, 609, 429, 249, 69, 898, 717,
+                829, 649, 470, 291, 112, 941, 761, 582, 403, 224, 45, 875, 695, 516, 337, 158,
+                987, 807, 628, 449, 270, 91, 921, 741, 562, 383, 204, 25, 855, 675, 496, 317,
+                138, 967, 787, 608, 429, 250, 71, 901, 721, 542, 363, 184, 5, 835, 655, 476,
+                297, 118, 948, 768, 589, 410, 231, 52, 882, 702, 523, 344, 165, 994, 814, 635,
+                456, 277, 98, 928, 748, 569, 390, 211, 32, 862, 682, 503, 324, 145, 974, 794
             ];
 
             let slot_0 = slots[0].clone();
 
-            assert_eq!(828, slot_0.key);
-            assert_eq!(slot_0_committee, slot_0.committee);
+            let committee = slot_0.get_committee();
+
+            assert_eq!(828, slot_0.leader);
+            assert_eq!(80, committee.len());
+            assert_eq!(&slot_0_committee, committee);
 
         }
         {
             let slot_74_committee: Vec<u32> = vec![
-                50, 101, 151, 203, 251, 298, 347, 394, 445, 496, 546, 594, 646, 695, 747, 796, 848,
-                895, 945, 990, 30, 84, 134, 184, 233, 280, 329, 376, 426, 475, 529, 577, 627, 677,
-                725, 779, 830, 879, 929, 974, 13, 63, 117, 167, 216, 264, 311, 360, 407, 459, 510,
-                560, 607, 660, 708, 760, 811, 861, 912, 958, 1005, 45, 97, 147, 199, 247, 293, 342,
-                390, 440, 489, 542, 590, 641, 691, 742, 792, 844, 891, 941
+                50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 649, 698, 747, 796,
+                845, 894, 943, 992, 33, 84, 134, 184, 234, 284, 334, 384, 434, 484, 534, 584,
+                633, 682, 731, 780, 829, 878, 927, 976, 17, 68, 118, 168, 218, 268, 318, 368,
+                418, 468, 518, 568, 618, 667, 716, 765, 814, 863, 912, 961, 2, 53, 103, 153,
+                203, 253, 303, 353, 403, 453, 503, 553, 603, 652, 701, 750, 799, 848, 897, 946
             ];
 
             let slot_74 = slots[74].clone();
+            let committee = slot_74.get_committee();
 
-            assert_eq!(49, slot_74.key);
-            assert_eq!(slot_74_committee, slot_74.committee);
+            assert_eq!(49, slot_74.leader);
+            assert_eq!(&slot_74_committee, committee);
 
         }
-
-
     }
 }
