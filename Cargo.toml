@@ -9,3 +9,4 @@ edition = "2018"
 [dependencies]
 blake3 = "0.3.5"
 hex = "0.4.2"
+log = "0.4.14"
