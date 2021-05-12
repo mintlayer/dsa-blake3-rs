@@ -6,18 +6,21 @@ mod round;
 extern crate hex;
 
 use log::{debug, info};
+use serde::{Serialize, Deserialize};
+use validator::{Validate, ValidationError};
 
 pub use participant::{ Participant, Id as ParticipantId };
-pub use slot::{Slot, Id as SlotId };
-pub use round::*;
+pub use slot::{ Slot, Id as SlotId };
+pub use round::{ Config as RoundConfig, *};
 
 const MIN_STAKE: u32 = 440000;
 const BTC: &'static str = "0000000000000000000d9ed0f796aeee51b200c7293a6e31c101a0e4159bf310";
 
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Validate, Debug, Clone)]
 pub struct Stake{
     pub id:u32,
+    #[validate(range(min = "MIN_STAKE"))]
     pub weight:u32
 }
 
@@ -28,6 +31,10 @@ pub fn total_stakes(stakes:&Vec<Stake>) -> u32 {
 
 pub(crate) fn total_stakes2(pcpants:&Vec<Participant>) -> u32 {
     pcpants.iter().map(|p| p.weight).sum()
+}
+
+pub fn btc_hash(btc:&str) -> Vec<u8> {
+    hex::decode(BTC).expect("Decoding failed")
 }
 
 fn print_type_of<T>(_: &T) {
@@ -62,55 +69,36 @@ mod tests {
     }
 
     #[test]
+    fn validate_stake() {
+        let stake = Stake {
+            id: 0,
+            weight: MIN_STAKE - 1
+        };
+
+        assert!(stake.validate().is_err());
+
+        let stake = Stake {
+            id: 0,
+            weight: MIN_STAKE + 1
+        };
+
+        assert!(stake.validate().is_ok());
+    }
+
+    #[test]
     fn test_stakes() {
-        let committee_size = 4;
-        let slot_size = 10;
+        let path = std::path::Path::new("tests/assets/test_stakes.json");
+        let cfg = std::fs::read_to_string(path).unwrap();
+        let cfg:RoundConfig = serde_json::from_str(&cfg).unwrap();
 
-        let stakes = vec![
-           Stake {
-                id: 0,
-                weight: MIN_STAKE,
-            },
-           Stake {
-                id: 1,
-                weight: MIN_STAKE,
-            },
-           Stake {
-                id: 2,
-                weight: MIN_STAKE + 1,
-            },
-           Stake {
-                id: 3,
-                weight: MIN_STAKE * 2,
-            },
-           Stake {
-                id: 4,
-                weight: MIN_STAKE * 2,
-            },
-           Stake {
-                id: 5,
-                weight: MIN_STAKE * 4,
-            },
-           Stake {
-                id: 6,
-                weight: 1_000_000,
-            },
-           Stake {
-                id: 7,
-                weight: 1_000_001,
-            },
-           Stake {
-                id: 8,
-                weight: 3_000_000,
-            },
-        ];
+        assert!(cfg.validate().is_ok());
 
-        let hash = hex::decode(BTC).expect("Decoding failed");
+        assert_eq!(9840002,cfg.total_stakes());
 
-        let round = Round::new(&stakes,slot_size,committee_size,hash);
+        let round = Round::generate(cfg);
+
         let slots = round.get_slots();
 
-        assert_eq!(9840002,total_stakes(&stakes));
         assert_eq!(2,round.signature_threshold());
         assert_eq!(8, slots[0].leader);
         assert_eq!(5, slots[1].leader);
@@ -127,20 +115,32 @@ mod tests {
     #[test]
     fn test_committee() {
         let committee_size = 80;
-        let slot_size = 1008;
+        let slots_size = 1008;
 
         let mut stakes: Vec<Stake> = vec![];
 
-        for i in 0..slot_size {
+        for i in 0..slots_size {
             stakes.push(Stake {
                 id: i as u32,
                 weight: MIN_STAKE + i as u32 * 2,
             })
         }
 
-        let hash = hex::decode(BTC).expect("Decoding failed");
+        let cfg = RoundConfig {
+            btc: BTC.to_string(),
+            stake_per_slot: MIN_STAKE,
+            slots_size,
+            committee_size,
+            min_participants: 1008,
+            stakes
+        };
 
-        let round = Round::new(&stakes,slot_size,committee_size,hash);
+        assert!(cfg.validate().is_ok());
+
+        let round = Round::generate(cfg);
+
+        let slots = round.get_slots();
+
         assert_eq!(40,round.signature_threshold());
 
         let slots = round.get_slots();

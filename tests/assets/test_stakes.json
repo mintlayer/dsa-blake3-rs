@@ -1,0 +1,45 @@
+{
+  "btc": "0000000000000000000d9ed0f796aeee51b200c7293a6e31c101a0e4159bf310",
+  "stake_per_slot": 440000,
+  "slots_size": 10,
+  "committee_size": 4,
+  "min_participants": 9,
+  "stakes": [
+    {
+      "id": 0,
+      "weight": 440000
+    },
+    {
+      "id": 1,
+      "weight": 440000
+    },
+    {
+      "id": 2,
+      "weight": 440001
+    },
+    {
+      "id": 3,
+      "weight": 880000
+    },
+    {
+      "id": 4,
+      "weight": 880000
+    },
+    {
+      "id": 5,
+      "weight": 1760000
+    },
+    {
+      "id": 6,
+      "weight": 1000000
+    },
+    {
+      "id": 7,
+      "weight": 1000001
+    },
+    {
+      "id": 8,
+      "weight": 3000000
+    }
+  ]
+}
