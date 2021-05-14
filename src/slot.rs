@@ -1,13 +1,14 @@
 use log::debug;
-
-use crate::{ParticipantId, Participant, rand, total_stakes2};
+use serde::{Serialize,Deserialize};
+use crate::{ParticipantId, ParticipantKey, Participant, rand, total_stakes2, ParticipantIdx};
+use std::collections::HashMap;
 
 pub type Id = u32;
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Slot {
-    pub id:u32,
-    pub leader:ParticipantId,
+    pub id:Id,
+    pub leader:ParticipantKey,
     committee:Vec<ParticipantId>
 }
 
@@ -17,79 +18,90 @@ impl Slot {
         &self.committee
     }
 
-    pub fn new(id:u32, participants:&mut Vec<Participant>, leader:ParticipantId, committee_size:usize, btc_hash:Vec<u8>) -> Self {
-        let committee = random_committee(id, participants, leader, committee_size, btc_hash );
+    pub fn new(idx:usize, bypass:&mut HashMap<ParticipantIdx,()>,participants:&mut Vec<Participant>, committee_size:usize, btc_hash:Vec<u8>) -> Self {
+        let committee = random_committee(idx,bypass, participants, committee_size, btc_hash );
 
         Slot {
-            id,
-            leader,
+            id: idx as u32,
+            leader: participants[idx].key ,
             committee
         }
     }
 }
 
 
-fn random_committee(id:u32,
-                    participants:&mut Vec<Participant>,
-                    leader:ParticipantId,
-                    committee_size:usize,
-                    btc_hash:Vec<u8>
-) -> Vec<ParticipantId> {
+pub fn random_committee(slot_idx:usize,
+                         // a flag to bypass participants that had already acted as signers
+                         bypass: &mut HashMap<ParticipantIdx, ()>,
+                         participants:&mut Vec<Participant>,
+                         committee_size:usize,
+                         btc_hash:Vec<u8>) -> Vec<ParticipantId> {
     let mut committee: Vec<ParticipantId> = vec![];
+    let mut curr_bypass: HashMap<ParticipantIdx, ()> = HashMap::new();
 
-    if committee_size >= participants.len() {
-        // insufficient participants to reach the set committee_size
+    let slot_id = slot_idx as u32;
 
-        participants.iter_mut().for_each(|p| {
-            p.add_signer_slot(id);
-            committee.push(p.id);
-
-        })
-    } else {
-
-        let mut total_stakes = total_stakes2(participants);
-
-        let mut pcpants:Vec<(usize,u32)> = participants.iter().enumerate().map(|(idx,p)| {
-            (idx,p.weight)
-        }).collect();
-
-        let mut rnd = rand(id as u8, btc_hash.clone(), total_stakes);
-
-        while committee.len() < committee_size {
-
-            pcpants.retain(|(idx,weight)|{
-                if committee.len() == committee_size {
-                    // if committee has been filled, don't bother checking for the others.
-                    false
-                }
-                else if weight >= &rnd {
-
-                    let p = &mut participants[*idx];
-                    if p.id != leader {
-                        // current participant is a signer for current slot.
-                        p.add_signer_slot(id);
-
-                        committee.push(p.id);
-
-                        // deduct the current participants's stakes
-                        total_stakes -= weight;
-
-                        // recalculate the random number
-                        rnd = rand(id as u8, btc_hash.clone(), total_stakes);
-
-                        debug!(" -> adding committee: {:?}", participants[*idx]);
-                    }
-
-                    false
-                }
-                else {
-                    // random number is too big.
-                    rnd -= weight;
-                    true
-                }
-            });
+    // function to loop over participants as signers
+    let to_iterate = |bypass_idx:&HashMap<ParticipantIdx,()>, pcpants:&Vec<Participant>| {
+        pcpants.iter().enumerate().filter_map(|(idx, p)| {
+            if !bypass_idx.contains_key(&idx) && idx != slot_idx {
+                Some((idx, p.weight))
+            } else {
+                None
+            }
         }
+        ).collect()
+    };
+
+    let mut pcpants:Vec<(ParticipantIdx, u32)> = to_iterate(bypass,participants);
+
+    let mut total:u32 = pcpants.iter().map(|(_,y)| *y).sum();
+    let mut rnd = rand(slot_idx as u8, btc_hash.clone(), total );
+
+    while committee.len() < committee_size {
+
+        // all participants have been signers; refresh the bypass flag
+        if pcpants.is_empty() {
+            bypass.drain();
+            bypass.extend( curr_bypass.iter());
+            curr_bypass = HashMap::new();
+
+            pcpants = to_iterate(bypass,participants);
+
+            total = pcpants.iter().map(|(_,y)| *y).sum();
+            rnd = rand(slot_idx as u8, btc_hash.clone(), total);
+        }
+
+        pcpants.retain(|(participant_idx, weight)| {
+            if committee.len() == committee_size {
+                false
+            } else if weight >= &rnd {
+                let p = &mut participants[*participant_idx];
+
+                // current participant is a signer for current slot.
+                p.add_signer_slot(slot_id);
+
+                // bypass this index, to give other participants a chance to be signers.
+                curr_bypass.insert(*participant_idx,());
+
+                committee.push(p.id);
+
+                // deduct the current participants's position
+                total -= weight;
+
+                // recalculate the random number
+                rnd = rand(slot_id as u8, btc_hash.clone(), total);
+
+                false
+            } else {
+                rnd -= weight;
+                true
+            }
+        });
     }
 
+    // concatenate the new participants to bypass
+    bypass.extend(curr_bypass.iter());
     committee
+
 }

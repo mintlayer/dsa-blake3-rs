@@ -1,7 +1,6 @@
 {
   "btc": "0000000000000000000d9ed0f796aeee51b200c7293a6e31c101a0e4159bf310",
   "stake_per_slot": 440000,
-  "slots_size": 10,
   "committee_size": 4,
   "min_participants": 9,
   "stakes": [
